@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/DenisChesnokov/gophermart/internal/config"
+	"github.com/DenisChesnokov/gophermart/internal/handler"
 	"github.com/DenisChesnokov/gophermart/internal/repository"
+	"github.com/DenisChesnokov/gophermart/internal/service"
 )
 
 func main() {
@@ -26,14 +28,15 @@ func main() {
 	}
 	log.Printf("migrations complete")
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+	jwtSecret := service.GenerateJWTSecret()
+
+	authService := service.NewAuthService(db, jwtSecret)
+	h := handler.New(authService)
+	r := handler.NewRouter(h, authService)
 
 	srv := &http.Server{
 		Addr:    cfg.ServerAddress,
-		Handler: mux,
+		Handler: r,
 	}
 
 	if err := srv.ListenAndServe(); err != nil {
