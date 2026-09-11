@@ -31,7 +31,9 @@ func main() {
 	jwtSecret := service.GenerateJWTSecret()
 
 	authService := service.NewAuthService(db, jwtSecret)
-	h := handler.New(authService)
+	orderService := service.NewOrderService(db)
+
+	h := handler.New(authService, orderService)
 	r := handler.NewRouter(h, authService)
 
 	srv := &http.Server{
