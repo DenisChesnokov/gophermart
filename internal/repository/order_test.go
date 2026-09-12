@@ -6,7 +6,7 @@ import (
 )
 
 func TestCreateOrder(t *testing.T) {
-	db, cleanup := SetupTestPostgres(t)
+	db, cleanup := setupTestPostgres(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -44,7 +44,7 @@ func TestCreateOrder(t *testing.T) {
 }
 
 func TestGetOrdersByUserID(t *testing.T) {
-	db, cleanup := SetupTestPostgres(t)
+	db, cleanup := setupTestPostgres(t)
 	defer cleanup()
 
 	ctx := context.Background()

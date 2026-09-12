@@ -6,7 +6,7 @@ import (
 )
 
 func TestCreateUser(t *testing.T) {
-	db, cleanup := SetupTestPostgres(t)
+	db, cleanup := setupTestPostgres(t)
 	defer cleanup()
 
 	ctx := context.Background()
@@ -28,7 +28,7 @@ func TestCreateUser(t *testing.T) {
 }
 
 func TestGetUserByLogin(t *testing.T) {
-	db, cleanup := SetupTestPostgres(t)
+	db, cleanup := setupTestPostgres(t)
 	defer cleanup()
 
 	ctx := context.Background()

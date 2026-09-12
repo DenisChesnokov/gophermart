@@ -13,12 +13,13 @@ import (
 )
 
 type Handler struct {
-	auth  *service.AuthService
-	order *service.OrderService
+	auth    *service.AuthService
+	order   *service.OrderService
+	balance *service.BalanceService
 }
 
-func New(auth *service.AuthService, order *service.OrderService) *Handler {
-	return &Handler{auth: auth, order: order}
+func New(auth *service.AuthService, order *service.OrderService, balance *service.BalanceService) *Handler {
+	return &Handler{auth: auth, order: order, balance: balance}
 }
 
 type authRequest struct {
@@ -138,6 +139,8 @@ func httpStatusFromCode(code string) int {
 		return http.StatusOK
 	case "202":
 		return http.StatusAccepted
+	case "402":
+		return http.StatusPaymentRequired
 	case "409":
 		return http.StatusConflict
 	case "422":
@@ -153,6 +156,97 @@ func (h *Handler) Orders(w http.ResponseWriter, r *http.Request) {
 		h.UploadOrder(w, r)
 	case http.MethodGet:
 		h.GetOrders(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	balance, err := h.balance.GetBalance(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(balance)
+}
+
+func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		Order string  `json:"order"`
+		Sum   float64 `json:"sum"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	statusCode, err := h.balance.Withdraw(r.Context(), userID, req.Order, req.Sum)
+	if err != nil {
+		http.Error(w, err.Error(), httpStatusFromCode(statusCode))
+		return
+	}
+
+	w.WriteHeader(httpStatusFromCode(statusCode))
+}
+
+func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	withdrawals, err := h.balance.GetWithdrawals(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if len(withdrawals) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(withdrawals)
+}
+
+func (h *Handler) Balance(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.GetBalance(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		h.Withdraw(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) WithdrawalsHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		h.GetWithdrawals(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

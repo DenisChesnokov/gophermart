@@ -12,7 +12,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-func SetupTestPostgres(t *testing.T) (*PostgresDB, func()) {
+func setupTestPostgres(t *testing.T) (*PostgresDB, func()) {
 	t.Helper()
 	ctx := context.Background()
 

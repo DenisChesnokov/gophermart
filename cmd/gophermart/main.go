@@ -32,8 +32,9 @@ func main() {
 
 	authService := service.NewAuthService(db, jwtSecret)
 	orderService := service.NewOrderService(db)
+	balanceService := service.NewBalanceService(db)
 
-	h := handler.New(authService, orderService)
+	h := handler.New(authService, orderService, balanceService)
 	r := handler.NewRouter(h, authService)
 
 	srv := &http.Server{

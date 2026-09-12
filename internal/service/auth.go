@@ -40,6 +40,11 @@ func (s *AuthService) Register(ctx context.Context, login, password string) (str
 		return "", err
 	}
 
+	// Создаём баланс для нового пользователя
+	if err := s.repo.CreateBalance(ctx, id); err != nil {
+		return "", err
+	}
+
 	return s.generateTokenByID(id)
 }
 

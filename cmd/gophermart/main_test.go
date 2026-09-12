@@ -84,16 +84,17 @@ func setupTestDB(t *testing.T) (*repository.PostgresDB, func()) {
 	return pg, cleanup
 }
 
-func setupTestServer(t *testing.T) (http.Handler, func()) {
+func setupTestServer(t *testing.T) (http.Handler, *repository.PostgresDB, func()) {
 	t.Helper()
 
 	db, cleanup := setupTestDB(t)
 	authService := service.NewAuthService(db, "test-secret")
 	orderService := service.NewOrderService(db)
-	h := handler.New(authService, orderService)
+	balanceService := service.NewBalanceService(db)
+	h := handler.New(authService, orderService, balanceService)
 	r := handler.NewRouter(h, authService)
 
-	return r, cleanup
+	return r, db, cleanup
 }
 
 func registerAndGetToken(t *testing.T, r http.Handler) string {
@@ -115,7 +116,7 @@ func registerAndGetToken(t *testing.T, r http.Handler) string {
 }
 
 func TestRegister(t *testing.T) {
-	r, cleanup := setupTestServer(t)
+	r, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	body := `{"login":"testuser","password":"password123"}`
@@ -148,7 +149,7 @@ func TestRegister(t *testing.T) {
 }
 
 func TestRegisterDuplicate(t *testing.T) {
-	r, cleanup := setupTestServer(t)
+	r, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	body := `{"login":"testuser","password":"password123"}`
@@ -169,7 +170,7 @@ func TestRegisterDuplicate(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	r, cleanup := setupTestServer(t)
+	r, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	body := `{"login":"testuser","password":"password123"}`
@@ -190,7 +191,7 @@ func TestLogin(t *testing.T) {
 }
 
 func TestUploadOrder(t *testing.T) {
-	r, cleanup := setupTestServer(t)
+	r, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	token := registerAndGetToken(t, r)
@@ -207,7 +208,7 @@ func TestUploadOrder(t *testing.T) {
 }
 
 func TestUploadOrderInvalid(t *testing.T) {
-	r, cleanup := setupTestServer(t)
+	r, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	token := registerAndGetToken(t, r)
@@ -224,7 +225,7 @@ func TestUploadOrderInvalid(t *testing.T) {
 }
 
 func TestGetOrders(t *testing.T) {
-	r, cleanup := setupTestServer(t)
+	r, _, cleanup := setupTestServer(t)
 	defer cleanup()
 
 	token := registerAndGetToken(t, r)
@@ -253,5 +254,133 @@ func TestGetOrders(t *testing.T) {
 	}
 	if orders[0].Number != "79927398713" {
 		t.Fatalf("expected order number 79927398713, got %s", orders[0].Number)
+	}
+}
+
+func TestGetBalance(t *testing.T) {
+	r, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	token := registerAndGetToken(t, r)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/balance", nil)
+	req.AddCookie(&http.Cookie{Name: "token", Value: token})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var balance model.Balance
+	if err := json.NewDecoder(rec.Body).Decode(&balance); err != nil {
+		t.Fatalf("failed to decode balance: %v", err)
+	}
+	if balance.Current != 0 {
+		t.Fatalf("expected current=0, got %f", balance.Current)
+	}
+}
+
+func TestGetBalanceUnauthorized(t *testing.T) {
+	r, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/balance", nil)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestWithdraw(t *testing.T) {
+	r, db, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	token := registerAndGetToken(t, r)
+
+	// Пополняем баланс
+	db.AddBalance(context.Background(), 1, 1000)
+
+	body := `{"order":"79927398713","sum":100}`
+	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "token", Value: token})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestWithdrawInvalidOrder(t *testing.T) {
+	r, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	token := registerAndGetToken(t, r)
+
+	body := `{"order":"123456789","sum":100}`
+	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "token", Value: token})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d", rec.Code)
+	}
+}
+
+func TestWithdrawInsufficientFunds(t *testing.T) {
+	r, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	token := registerAndGetToken(t, r)
+
+	// Баланс = 0, пробуем списать
+	body := `{"order":"79927398713","sum":100}`
+	req := httptest.NewRequest(http.MethodPost, "/api/user/balance/withdraw", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "token", Value: token})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusPaymentRequired {
+		t.Fatalf("expected 402, got %d", rec.Code)
+	}
+}
+
+func TestGetWithdrawals(t *testing.T) {
+	r, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	token := registerAndGetToken(t, r)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil)
+	req.AddCookie(&http.Cookie{Name: "token", Value: token})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	// Пока нет списаний — ожидаем 204
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
+func TestGetWithdrawalsEmpty(t *testing.T) {
+	r, _, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	token := registerAndGetToken(t, r)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/user/withdrawals", nil)
+	req.AddCookie(&http.Cookie{Name: "token", Value: token})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
 	}
 }
