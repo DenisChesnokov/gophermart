@@ -31,6 +31,10 @@ func (s *OrderService) GetOrders(ctx context.Context, userID int64) ([]model.Ord
 }
 
 func ValidateLuhn(number string) bool {
+	if len(number) == 0 {
+		return false
+	}
+
 	sum := 0
 	nDigits := len(number)
 	parity := nDigits % 2
