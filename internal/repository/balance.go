@@ -106,3 +106,11 @@ func (db *PostgresDB) AddBalance(ctx context.Context, userID int64, amount float
 	)
 	return err
 }
+
+func (db *PostgresDB) CreditAccrual(ctx context.Context, userID int64, amount float64) error {
+	_, err := db.pool.Exec(ctx,
+		`UPDATE balances SET current = current + $1 WHERE user_id = $2`,
+		amount, userID,
+	)
+	return err
+}

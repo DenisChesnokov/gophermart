@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"time"
 
+	"github.com/DenisChesnokov/gophermart/internal/accrual"
 	"github.com/DenisChesnokov/gophermart/internal/config"
 	"github.com/DenisChesnokov/gophermart/internal/handler"
 	"github.com/DenisChesnokov/gophermart/internal/repository"
 	"github.com/DenisChesnokov/gophermart/internal/service"
+	"github.com/DenisChesnokov/gophermart/internal/worker"
 )
 
 func main() {
@@ -36,6 +40,14 @@ func main() {
 
 	h := handler.New(authService, orderService, balanceService)
 	r := handler.NewRouter(h, authService)
+
+	// Запуск accrual worker
+	accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
+	accrualWorker := worker.NewAccrualWorker(accrualClient, db, 5*time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go accrualWorker.Run(ctx)
 
 	srv := &http.Server{
 		Addr:    cfg.ServerAddress,

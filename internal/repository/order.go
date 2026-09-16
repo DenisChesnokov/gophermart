@@ -72,3 +72,47 @@ func (db *PostgresDB) GetOrdersByUserID(ctx context.Context, userID int64) ([]mo
 
 	return orders, nil
 }
+
+func (db *PostgresDB) GetPendingOrders(ctx context.Context, limit int) ([]model.Order, error) {
+	rows, err := db.pool.Query(ctx,
+		`SELECT number, status, accrual, uploaded_at FROM orders
+		 WHERE status IN ('NEW', 'PROCESSING')
+		 ORDER BY uploaded_at ASC
+		 LIMIT $1`, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []model.Order
+	for rows.Next() {
+		var o model.Order
+		if err := rows.Scan(&o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+
+	return orders, rows.Err()
+}
+
+func (db *PostgresDB) UpdateOrderStatus(ctx context.Context, number string, status string, accrual float64) error {
+	_, err := db.pool.Exec(ctx,
+		`UPDATE orders SET status = $1, accrual = $2 WHERE number = $3`,
+		status, accrual, number,
+	)
+	return err
+}
+
+func (db *PostgresDB) GetOrderByNumber(ctx context.Context, number string) (int64, string, error) {
+	var userID int64
+	var status string
+	err := db.pool.QueryRow(ctx,
+		`SELECT user_id, status FROM orders WHERE number = $1`, number,
+	).Scan(&userID, &status)
+	if err != nil {
+		return 0, "", err
+	}
+	return userID, status, nil
+}

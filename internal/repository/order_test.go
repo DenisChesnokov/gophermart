@@ -72,3 +72,70 @@ func TestGetOrdersByUserID(t *testing.T) {
 		t.Fatalf("expected 1 order, got %d", len(orders))
 	}
 }
+func TestGetPendingOrders(t *testing.T) {
+	db, cleanup := setupTestPostgres(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	db.CreateUser(ctx, "user1", "hash1")
+	db.CreateOrder(ctx, 1, "79927398713")
+	db.CreateOrder(ctx, 1, "12345678903")
+
+	orders, err := db.GetPendingOrders(ctx, 10)
+	if err != nil {
+		t.Fatalf("GetPendingOrders: %v", err)
+	}
+	if len(orders) != 2 {
+		t.Fatalf("expected 2 pending orders, got %d", len(orders))
+	}
+	for _, o := range orders {
+		if o.Status != "NEW" {
+			t.Fatalf("expected status NEW, got %s", o.Status)
+		}
+	}
+}
+
+func TestUpdateOrderStatus(t *testing.T) {
+	db, cleanup := setupTestPostgres(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	db.CreateUser(ctx, "user1", "hash1")
+	db.CreateOrder(ctx, 1, "79927398713")
+
+	err := db.UpdateOrderStatus(ctx, "79927398713", "PROCESSED", 500)
+	if err != nil {
+		t.Fatalf("UpdateOrderStatus: %v", err)
+	}
+
+	orders, _ := db.GetOrdersByUserID(ctx, 1)
+	if orders[0].Status != "PROCESSED" {
+		t.Fatalf("expected status PROCESSED, got %s", orders[0].Status)
+	}
+	if orders[0].Accrual != 500 {
+		t.Fatalf("expected accrual 500, got %f", orders[0].Accrual)
+	}
+}
+
+func TestGetOrderByNumber(t *testing.T) {
+	db, cleanup := setupTestPostgres(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	db.CreateUser(ctx, "user1", "hash1")
+	db.CreateOrder(ctx, 1, "79927398713")
+
+	userID, status, err := db.GetOrderByNumber(ctx, "79927398713")
+	if err != nil {
+		t.Fatalf("GetOrderByNumber: %v", err)
+	}
+	if userID != 1 {
+		t.Fatalf("expected userID=1, got %d", userID)
+	}
+	if status != "NEW" {
+		t.Fatalf("expected status NEW, got %s", status)
+	}
+}

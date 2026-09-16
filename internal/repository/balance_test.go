@@ -107,3 +107,29 @@ func TestGetWithdrawalsEmpty(t *testing.T) {
 		t.Fatalf("expected 0 withdrawals, got %d", len(withdrawals))
 	}
 }
+
+func TestCreditAccrual(t *testing.T) {
+	db, cleanup := setupTestPostgres(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	db.CreateUser(ctx, "user1", "hash1")
+	db.CreateBalance(ctx, 1)
+
+	err := db.CreditAccrual(ctx, 1, 500)
+	if err != nil {
+		t.Fatalf("CreditAccrual: %v", err)
+	}
+
+	current, withdrawn, err := db.GetBalance(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetBalance: %v", err)
+	}
+	if current != 500 {
+		t.Fatalf("expected current=500, got %f", current)
+	}
+	if withdrawn != 0 {
+		t.Fatalf("expected withdrawn=0, got %f", withdrawn)
+	}
+}
