@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ func TestCreateUser(t *testing.T) {
 
 	// Дубликат — ожидаем ErrUserAlreadyExists
 	_, err = db.CreateUser(ctx, "testuser", "hash456")
-	if err != ErrUserAlreadyExists {
+	if !errors.Is(err, ErrUserAlreadyExists) {
 		t.Fatalf("expected ErrUserAlreadyExists, got %v", err)
 	}
 }
@@ -35,7 +36,7 @@ func TestGetUserByLogin(t *testing.T) {
 
 	// Несуществующий пользователь — ожидаем ErrUserNotFound
 	_, _, err := db.GetUserByLogin(ctx, "nonexistent")
-	if err != ErrUserNotFound {
+	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
 	}
 

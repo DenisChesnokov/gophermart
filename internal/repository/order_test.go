@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -25,7 +26,7 @@ func TestCreateOrder(t *testing.T) {
 
 	// Тот же заказ от того же пользователя — ожидаем 200 + ErrOrderAlreadyExistsByUser
 	code, err = db.CreateOrder(ctx, 1, "79927398713")
-	if err != ErrOrderAlreadyExistsByUser {
+	if !errors.Is(err, ErrOrderAlreadyExistsByUser) {
 		t.Fatalf("expected ErrOrderAlreadyExistsByUser, got %v", err)
 	}
 	if code != "200" {
@@ -35,7 +36,7 @@ func TestCreateOrder(t *testing.T) {
 	// Тот же заказ от другого пользователя — ожидаем 409 + ErrOrderExistsByOtherUser
 	db.CreateUser(ctx, "user2", "hash2")
 	code, err = db.CreateOrder(ctx, 2, "79927398713")
-	if err != ErrOrderExistsByOtherUser {
+	if !errors.Is(err, ErrOrderExistsByOtherUser) {
 		t.Fatalf("expected ErrOrderExistsByOtherUser, got %v", err)
 	}
 	if code != "409" {
@@ -137,5 +138,34 @@ func TestGetOrderByNumber(t *testing.T) {
 	}
 	if status != "NEW" {
 		t.Fatalf("expected status NEW, got %s", status)
+	}
+}
+
+func TestProcessOrderAccrual(t *testing.T) {
+	db, cleanup := setupTestPostgres(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	db.CreateUser(ctx, "user1", "hash1")
+	db.CreateBalance(ctx, 1)
+	db.CreateOrder(ctx, 1, "79927398713")
+
+	err := db.ProcessOrderAccrual(ctx, "79927398713", 1, "PROCESSED", 500)
+	if err != nil {
+		t.Fatalf("ProcessOrderAccrual: %v", err)
+	}
+
+	orders, _ := db.GetOrdersByUserID(ctx, 1)
+	if orders[0].Status != "PROCESSED" {
+		t.Fatalf("expected status PROCESSED, got %s", orders[0].Status)
+	}
+	if orders[0].Accrual != 500 {
+		t.Fatalf("expected accrual 500, got %f", orders[0].Accrual)
+	}
+
+	current, _, _ := db.GetBalance(ctx, 1)
+	if current != 500 {
+		t.Fatalf("expected balance=500, got %f", current)
 	}
 }

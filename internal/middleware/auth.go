@@ -8,7 +8,7 @@ import (
 
 type contextKey string
 
-const UserIDKey contextKey = "user_id"
+const userIDKey contextKey = "user_id"
 
 type TokenValidator interface {
 	ValidateToken(string) (int64, error)
@@ -50,13 +50,13 @@ func Auth(v TokenValidator) func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), UserIDKey, userID)
+			ctx := context.WithValue(r.Context(), userIDKey, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 func GetUserID(ctx context.Context) (int64, bool) {
-	userID, ok := ctx.Value(UserIDKey).(int64)
+	userID, ok := ctx.Value(userIDKey).(int64)
 	return userID, ok
 }

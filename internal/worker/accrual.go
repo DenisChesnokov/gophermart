@@ -2,11 +2,13 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
 	"github.com/DenisChesnokov/gophermart/internal/accrual"
 	"github.com/DenisChesnokov/gophermart/internal/repository"
+	"golang.org/x/sync/errgroup"
 )
 
 type AccrualWorker struct {
@@ -47,49 +49,57 @@ func (w *AccrualWorker) processPendingOrders(ctx context.Context) {
 		return
 	}
 
-	for _, order := range orders {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(5)
 
-		w.processOrder(ctx, order.Number)
+	for _, order := range orders {
+		g.Go(func() error {
+			return w.processOrder(gctx, order.Number)
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		var rateLimitErr *accrual.RateLimitError
+		if errors.As(err, &rateLimitErr) {
+			log.Printf("batch stopped due to rate limit, waiting %s", rateLimitErr.RetryAfter)
+			waitCtx, cancel := context.WithTimeout(ctx, rateLimitErr.RetryAfter)
+			defer cancel()
+			<-waitCtx.Done()
+		}
 	}
 }
 
-func (w *AccrualWorker) processOrder(ctx context.Context, orderNumber string) {
+func (w *AccrualWorker) processOrder(ctx context.Context, orderNumber string) error {
 	resp, err := w.client.GetOrder(ctx, orderNumber)
 	if err != nil {
-		if rateLimitErr, ok := err.(*accrual.RateLimitError); ok {
-			log.Printf("rate limit hit, waiting %s", rateLimitErr.RetryAfter)
-			time.Sleep(rateLimitErr.RetryAfter)
-			return
-		}
-		log.Printf("failed to get order %s: %v", orderNumber, err)
-		return
+		return err
 	}
 
 	if resp == nil {
-		return
+		return nil
 	}
 
 	switch resp.Status {
 	case "REGISTERED", "PROCESSING":
-		w.db.UpdateOrderStatus(ctx, orderNumber, "PROCESSING", 0)
-
+		if err := w.db.UpdateOrderStatus(ctx, orderNumber, "PROCESSING", 0); err != nil {
+			log.Printf("failed to update order status: %v", err)
+			return err
+		}
 	case "INVALID":
-		w.db.UpdateOrderStatus(ctx, orderNumber, "INVALID", 0)
-
+		if err := w.db.UpdateOrderStatus(ctx, orderNumber, "INVALID", 0); err != nil {
+			log.Printf("failed to update order status: %v", err)
+			return err
+		}
 	case "PROCESSED":
 		userID, _, err := w.db.GetOrderByNumber(ctx, orderNumber)
 		if err != nil {
 			log.Printf("failed to get order user: %v", err)
-			return
+			return err
 		}
-		w.db.UpdateOrderStatus(ctx, orderNumber, "PROCESSED", resp.Accrual)
-		if resp.Accrual > 0 {
-			w.db.CreditAccrual(ctx, userID, resp.Accrual)
+		if err := w.db.ProcessOrderAccrual(ctx, orderNumber, userID, "PROCESSED", resp.Accrual); err != nil {
+			log.Printf("failed to process accrual for order %s: %v", orderNumber, err)
+			return err
 		}
 	}
+	return nil
 }

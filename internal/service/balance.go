@@ -8,11 +8,17 @@ import (
 	"github.com/DenisChesnokov/gophermart/internal/repository"
 )
 
-type BalanceService struct {
-	repo *repository.PostgresDB
+type BalanceRepo interface {
+	GetBalance(ctx context.Context, userID int64) (float64, float64, error)
+	Withdraw(ctx context.Context, userID int64, order string, sum float64) error
+	GetWithdrawals(ctx context.Context, userID int64) ([]model.Withdrawal, error)
 }
 
-func NewBalanceService(repo *repository.PostgresDB) *BalanceService {
+type BalanceService struct {
+	repo BalanceRepo
+}
+
+func NewBalanceService(repo BalanceRepo) *BalanceService {
 	return &BalanceService{repo: repo}
 }
 

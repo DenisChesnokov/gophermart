@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -63,7 +64,7 @@ func TestWithdrawInsufficientFunds(t *testing.T) {
 	db.CreateBalance(ctx, 1)
 
 	err := db.Withdraw(ctx, 1, "79927398713", 100)
-	if err != ErrInsufficientFunds {
+	if !errors.Is(err, ErrInsufficientFunds) {
 		t.Fatalf("expected ErrInsufficientFunds, got %v", err)
 	}
 }

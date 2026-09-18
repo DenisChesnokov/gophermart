@@ -7,13 +7,18 @@ import (
 	"errors"
 	"time"
 
-	"github.com/DenisChesnokov/gophermart/internal/repository"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
+type UserRepo interface {
+	CreateUser(ctx context.Context, login, passwordHash string) (int64, error)
+	GetUserByLogin(ctx context.Context, login string) (int64, string, error)
+	CreateBalance(ctx context.Context, userID int64) error
+}
+
 type AuthService struct {
-	repo      *repository.PostgresDB
+	repo      UserRepo
 	jwtSecret []byte
 }
 
@@ -22,7 +27,7 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-func NewAuthService(repo *repository.PostgresDB, secret string) *AuthService {
+func NewAuthService(repo UserRepo, secret string) *AuthService {
 	return &AuthService{
 		repo:      repo,
 		jwtSecret: []byte(secret),

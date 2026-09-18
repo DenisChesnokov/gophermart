@@ -114,3 +114,32 @@ func TestGetOrder_RateLimit(t *testing.T) {
 		t.Fatalf("expected RetryAfter=30s, got %s", rateLimitErr.RetryAfter)
 	}
 }
+func TestGetOrder_Retry(t *testing.T) {
+	calls := 0
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(model.AccrualOrder{
+			Order:   "79927398713",
+			Status:  "PROCESSED",
+			Accrual: 500,
+		})
+	}))
+	defer mock.Close()
+
+	client := NewClient(mock.URL)
+	order, err := client.GetOrder(context.Background(), "79927398713")
+	if err != nil {
+		t.Fatalf("GetOrder: %v", err)
+	}
+	if order.Accrual != 500 {
+		t.Fatalf("expected accrual 500, got %f", order.Accrual)
+	}
+	if calls != 2 {
+		t.Fatalf("expected 2 calls, got %d", calls)
+	}
+}

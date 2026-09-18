@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/DenisChesnokov/gophermart/internal/accrual"
@@ -18,6 +21,10 @@ func main() {
 	cfg := config.New()
 	cfg.ParseFlags() // флаги парсятся первыми
 	cfg.ParseEnv()   // ENV перезаписывает флаги
+
+	if cfg.DatabaseDSN == "" {
+		log.Fatal("DATABASE_URI is required")
+	}
 
 	log.Printf("starting server on %s", cfg.ServerAddress)
 
@@ -45,8 +52,9 @@ func main() {
 	accrualClient := accrual.NewClient(cfg.AccrualSystemAddress)
 	accrualWorker := worker.NewAccrualWorker(accrualClient, db, 5*time.Second)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	go accrualWorker.Run(ctx)
 
 	srv := &http.Server{
@@ -54,7 +62,21 @@ func main() {
 		Handler: r,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server error: %v", err)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	log.Printf("server started on %s", cfg.ServerAddress)
+
+	<-ctx.Done()
+	log.Println("shutting down...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("shutdown error: %v", err)
 	}
 }

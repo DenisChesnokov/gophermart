@@ -116,3 +116,31 @@ func (db *PostgresDB) GetOrderByNumber(ctx context.Context, number string) (int6
 	}
 	return userID, status, nil
 }
+
+func (db *PostgresDB) ProcessOrderAccrual(ctx context.Context, number string, userID int64, status string, accrual float64) error {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx,
+		`UPDATE orders SET status = $1, accrual = $2 WHERE number = $3`,
+		status, accrual, number,
+	)
+	if err != nil {
+		return err
+	}
+
+	if accrual > 0 {
+		_, err = tx.Exec(ctx,
+			`UPDATE balances SET current = current + $1 WHERE user_id = $2`,
+			accrual, userID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit(ctx)
+}

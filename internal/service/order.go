@@ -6,16 +6,20 @@ import (
 	"strconv"
 
 	"github.com/DenisChesnokov/gophermart/internal/model"
-	"github.com/DenisChesnokov/gophermart/internal/repository"
 )
 
 var ErrInvalidOrderNumber = errors.New("invalid order number")
 
-type OrderService struct {
-	repo *repository.PostgresDB
+type OrderRepo interface {
+	CreateOrder(ctx context.Context, userID int64, number string) (string, error)
+	GetOrdersByUserID(ctx context.Context, userID int64) ([]model.Order, error)
 }
 
-func NewOrderService(repo *repository.PostgresDB) *OrderService {
+type OrderService struct {
+	repo OrderRepo
+}
+
+func NewOrderService(repo OrderRepo) *OrderService {
 	return &OrderService{repo: repo}
 }
 

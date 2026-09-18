@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -104,7 +105,12 @@ func (h *Handler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 
 	statusCode, err := h.order.UploadOrder(r.Context(), userID, number)
 	if err != nil {
-		http.Error(w, err.Error(), httpStatusFromCode(statusCode))
+		if httpStatusFromCode(statusCode) >= 500 {
+			log.Printf("upload order error: %v", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		} else {
+			http.Error(w, err.Error(), httpStatusFromCode(statusCode))
+		}
 		return
 	}
 
@@ -120,7 +126,8 @@ func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
 
 	orders, err := h.order.GetOrders(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		log.Printf("get orders error: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -170,7 +177,8 @@ func (h *Handler) GetBalance(w http.ResponseWriter, r *http.Request) {
 
 	balance, err := h.balance.GetBalance(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		log.Printf("get balance error: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
@@ -196,7 +204,12 @@ func (h *Handler) Withdraw(w http.ResponseWriter, r *http.Request) {
 
 	statusCode, err := h.balance.Withdraw(r.Context(), userID, req.Order, req.Sum)
 	if err != nil {
-		http.Error(w, err.Error(), httpStatusFromCode(statusCode))
+		if httpStatusFromCode(statusCode) >= 500 {
+			log.Printf("withdraw error: %v", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		} else {
+			http.Error(w, err.Error(), httpStatusFromCode(statusCode))
+		}
 		return
 	}
 
@@ -212,7 +225,8 @@ func (h *Handler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
 
 	withdrawals, err := h.balance.GetWithdrawals(r.Context(), userID)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		log.Printf("get withdrawals error: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 

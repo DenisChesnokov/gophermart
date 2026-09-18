@@ -14,7 +14,7 @@ type Config struct {
 func New() *Config {
 	return &Config{
 		ServerAddress:        "localhost:8080",
-		DatabaseDSN:          "postgresql://postgres:postgres@localhost:5432/gophermart?sslmode=disable",
+		DatabaseDSN:          "",
 		AccrualSystemAddress: "localhost:8081",
 	}
 }
