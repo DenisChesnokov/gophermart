@@ -1,0 +1,15 @@
+CREATE TABLE IF NOT EXISTS balances (
+    user_id BIGINT PRIMARY KEY REFERENCES users(id),
+    current NUMERIC(10,2) NOT NULL DEFAULT 0,
+    withdrawn NUMERIC(10,2) NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS withdrawals (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    "order" VARCHAR(255) NOT NULL,
+    sum NUMERIC(10,2) NOT NULL,
+    processed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_withdrawals_user_id ON withdrawals(user_id);
