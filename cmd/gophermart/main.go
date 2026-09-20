@@ -78,15 +78,16 @@ func main() {
 	<-ctx.Done()
 	log.Println("shutting down...")
 
-	if err := <-serverErr; err != nil && err != http.ErrServerClosed {
-		log.Printf("server error: %v", err)
-	}
-
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil { // сначала shutdown
 		log.Printf("shutdown error: %v", err)
 	}
+
+	if err := <-serverErr; err != nil && err != http.ErrServerClosed { // потом читаем
+		log.Printf("server error: %v", err)
+	}
+
 	workerDone.Wait()
 }
