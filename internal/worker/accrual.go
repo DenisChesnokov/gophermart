@@ -65,6 +65,8 @@ func (w *AccrualWorker) processPendingOrders(ctx context.Context) {
 			waitCtx, cancel := context.WithTimeout(ctx, rateLimitErr.RetryAfter)
 			defer cancel()
 			<-waitCtx.Done()
+		} else {
+			log.Printf("batch processing error: %v", err)
 		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -19,8 +20,8 @@ import (
 
 func main() {
 	cfg := config.New()
-	cfg.ParseFlags() // флаги парсятся первыми
-	cfg.ParseEnv()   // ENV перезаписывает флаги
+	cfg.ParseEnv()   // ENV парсится первым
+	cfg.ParseFlags() // флаги перезаписывают ENV
 
 	if cfg.DatabaseDSN == "" {
 		log.Fatal("DATABASE_URI is required")
@@ -55,17 +56,21 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go accrualWorker.Run(ctx)
+	var workerDone sync.WaitGroup
+	workerDone.Add(1)
+	go func() {
+		defer workerDone.Done()
+		accrualWorker.Run(ctx)
+	}()
 
 	srv := &http.Server{
 		Addr:    cfg.ServerAddress,
 		Handler: r,
 	}
 
+	serverErr := make(chan error, 1)
 	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
-		}
+		serverErr <- srv.ListenAndServe()
 	}()
 
 	log.Printf("server started on %s", cfg.ServerAddress)
@@ -73,10 +78,15 @@ func main() {
 	<-ctx.Done()
 	log.Println("shutting down...")
 
+	if err := <-serverErr; err != nil && err != http.ErrServerClosed {
+		log.Printf("server error: %v", err)
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+	workerDone.Wait()
 }

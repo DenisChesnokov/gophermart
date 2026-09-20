@@ -42,7 +42,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		log.Printf("register error: %v", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 
